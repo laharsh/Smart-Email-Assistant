@@ -1,0 +1,12 @@
+openai
+scikit-learn
+pandas
+requests
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+streamlit
+fastapi
+uvicorn[standard]
+python-dotenv
