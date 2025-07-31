@@ -42,16 +42,27 @@ templates = Jinja2Templates(directory="templates")
 # OAuth2 configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+# Set redirect URI with fallback
+if IS_PRODUCTION:
+    # For production, use the BASE_URL
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", f"{BASE_URL}/auth/gmail/callback")
+else:
+    # For local development
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/gmail/callback")
 
 # Hugging Face configuration
 HF_API_KEY = os.getenv("HF_API_KEY")
 
 # Initialize email processor
-email_processor = EmailProcessor(
-    openai_api_key="dummy_key",  # Not used anymore
-    hf_api_key=HF_API_KEY
-)
+try:
+    email_processor = EmailProcessor(
+        openai_api_key="dummy_key",  # Not used anymore
+        hf_api_key=HF_API_KEY
+    )
+except Exception as e:
+    print(f"Warning: Email processor initialization failed: {e}")
+    email_processor = None
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
@@ -113,6 +124,10 @@ def gmail_auth_initiate():
             }
         )
     
+    # Debug: Print redirect URI for troubleshooting
+    print(f"DEBUG: GOOGLE_REDIRECT_URI = {GOOGLE_REDIRECT_URI}")
+    print(f"DEBUG: BASE_URL = {BASE_URL}")
+    
     # Gmail API scopes
     scopes = [
         "https://www.googleapis.com/auth/gmail.readonly",
@@ -132,6 +147,7 @@ def gmail_auth_initiate():
     }
     
     auth_url_with_params = f"{auth_url}?{urlencode(params)}"
+    print(f"DEBUG: Auth URL = {auth_url_with_params}")
     return RedirectResponse(url=auth_url_with_params)
 
 @app.get("/auth/gmail/callback")
@@ -391,6 +407,8 @@ def analyze_emails_advanced(access_token: str = None, max_results: int = 10):
             })
         
         # Use advanced email processor for analysis
+        if email_processor is None:
+            raise HTTPException(status_code=500, detail="Email processor not initialized")
         analyzed_emails = email_processor.batch_analyze_emails(emails_data)
         
         # Generate summary statistics
@@ -462,6 +480,8 @@ def smart_summarize_emails(access_token: str = None, category_filter: str = None
             })
         
         # Analyze emails
+        if email_processor is None:
+            raise HTTPException(status_code=500, detail="Email processor not initialized")
         analyzed_emails = email_processor.batch_analyze_emails(emails_data)
         
         # Filter by category if specified
