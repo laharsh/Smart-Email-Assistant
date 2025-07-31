@@ -47,9 +47,12 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 if IS_PRODUCTION:
     # For production, use the BASE_URL
     GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", f"{BASE_URL}/auth/gmail/callback")
+    print(f"DEBUG: Production mode - BASE_URL: {BASE_URL}")
+    print(f"DEBUG: Production mode - GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
 else:
     # For local development
     GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/gmail/callback")
+    print(f"DEBUG: Development mode - GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
 
 # Hugging Face configuration
 HF_API_KEY = os.getenv("HF_API_KEY")
