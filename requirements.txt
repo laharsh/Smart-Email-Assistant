@@ -1,12 +1,26 @@
-openai
-scikit-learn
-pandas
-requests
+# Core web framework
+fastapi
+uvicorn[standard]
+jinja2
+
+# Google API integration
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
-streamlit
-fastapi
-uvicorn[standard]
+
+# HTTP requests
+requests
+
+# Environment variables
 python-dotenv
+
+# Data processing
+pandas
+numpy
+
+# Machine learning
+scikit-learn
+
+# Type hints
+typing-extensions

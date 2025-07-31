@@ -1,39 +1,71 @@
 from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import os
+import base64
 from dotenv import load_dotenv
 import requests
 from urllib.parse import urlencode
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
-import openai
+
+from core.process_emails import EmailProcessor
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="Smart Email Assistant", description="AI-powered email management system")
+# Production configuration
+IS_PRODUCTION = os.getenv("IS_PRODUCTION", "false").lower() == "true"
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+
+app = FastAPI(
+    title="Smart Email Assistant", 
+    description="AI-powered email management system",
+    version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if not IS_PRODUCTION else [BASE_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Setup templates
+templates = Jinja2Templates(directory="templates")
 
 # OAuth2 configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 
-# OpenAI configuration
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Hugging Face configuration
 HF_API_KEY = os.getenv("HF_API_KEY")
 
-@app.get("/")
-def read_root():
-    """Root endpoint with basic info."""
+# Initialize email processor
+email_processor = EmailProcessor(
+    openai_api_key="dummy_key",  # Not used anymore
+    hf_api_key=HF_API_KEY
+)
+
+@app.get("/", response_class=HTMLResponse)
+def read_root(request: Request):
+    """Serve the main application interface."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint for deployment platforms."""
     return {
-        "message": "Smart Email Assistant API",
+        "status": "healthy",
+        "service": "Smart Email Assistant",
         "version": "1.0.0",
-        "endpoints": {
-            "auth": "/auth/gmail/initiate",
-            "docs": "/docs",
-            "emails": "/emails"
-        }
+        "production": IS_PRODUCTION
     }
 
 # --- Models ---
@@ -49,19 +81,43 @@ class ClassifyRequest(BaseModel):
     message: str
 
 class ReplyRequest(BaseModel):
-    thread_id: str
-    message: str
+    email_id: str
+    reply_type: str = "professional"  # professional, friendly, concise
+    custom_message: str = ""
 
 # --- OAuth2 Endpoints ---
 @app.get("/auth/gmail/initiate")
 def gmail_auth_initiate():
     """Initiate Gmail OAuth2 flow."""
     if not GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="Google Client ID not configured")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Google Client ID not configured",
+                "message": "Please set GOOGLE_CLIENT_ID in your .env file",
+                "setup_instructions": [
+                    "1. Go to https://console.cloud.google.com/apis/credentials",
+                    "2. Create a new OAuth 2.0 Client ID",
+                    "3. Add http://localhost:8000/auth/gmail/callback to authorized redirect URIs",
+                    "4. Copy the Client ID and Client Secret to your .env file"
+                ]
+            }
+        )
     
-    # Gmail API scopes (using less sensitive scopes for testing)
+    if not GOOGLE_CLIENT_SECRET:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Google Client Secret not configured",
+                "message": "Please set GOOGLE_CLIENT_SECRET in your .env file"
+            }
+        )
+    
+    # Gmail API scopes
     scopes = [
-        "https://www.googleapis.com/auth/gmail.readonly"
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/userinfo.email"
     ]
     
     # Build authorization URL
@@ -82,10 +138,11 @@ def gmail_auth_initiate():
 def gmail_auth_callback(code: str = None, error: str = None):
     """Handle Gmail OAuth2 callback."""
     if error:
-        raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
+        # Redirect back to frontend with error
+        return RedirectResponse(url=f"/?error={error}")
     
     if not code:
-        raise HTTPException(status_code=400, detail="Authorization code not provided")
+        return RedirectResponse(url="/?error=no_code")
     
     # Exchange authorization code for tokens
     token_url = "https://oauth2.googleapis.com/token"
@@ -102,17 +159,15 @@ def gmail_auth_callback(code: str = None, error: str = None):
         response.raise_for_status()
         tokens = response.json()
         
-        # Store tokens (in production, use a secure database)
-        # For now, we'll return them (don't do this in production!)
-        return {
-            "message": "Authentication successful!",
-            "access_token": tokens.get("access_token"),
-            "refresh_token": tokens.get("refresh_token"),
-            "expires_in": tokens.get("expires_in")
-        }
+        access_token = tokens.get("access_token")
+        if not access_token:
+            return RedirectResponse(url="/?error=no_access_token")
+        
+        # Redirect back to frontend with access token
+        return RedirectResponse(url=f"/?access_token={access_token}")
         
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Token exchange failed: {str(e)}")
+        return RedirectResponse(url=f"/?error=token_exchange_failed")
 
 # --- Email Fetching ---
 @app.get("/emails")
@@ -230,28 +285,89 @@ def classify_email(req: ClassifyRequest):
 
 # --- Auto-Reply ---
 @app.post("/emails/reply")
-def auto_reply(req: ReplyRequest):
-    """Generate and send an auto-reply."""
-    # TODO: Use OpenAI to generate reply and send via Gmail API
-    return {"reply": "This is a placeholder auto-reply."}
-
-@app.post("/emails/summarize/recent")
-def summarize_recent_emails(access_token: str = None):
-    """Fetch and summarize the 10 most recent, important emails from the Primary tab."""
+def auto_reply(req: ReplyRequest, access_token: str = None):
+    """Generate and send an auto-reply to an email."""
     if not access_token:
         raise HTTPException(status_code=400, detail="Access token required")
+    
     try:
-        # Fetch emails (reuse logic from fetch_emails)
+        # Get Gmail service
+        credentials = Credentials(access_token)
+        service = build('gmail', 'v1', credentials=credentials)
+        
+        # Get the original email
+        message = service.users().messages().get(
+            userId='me',
+            id=req.email_id,
+            format='full'
+        ).execute()
+        
+        # Extract email details
+        headers = message['payload']['headers']
+        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
+        original_content = message.get('snippet', '')
+        
+        # Generate reply based on type
+        reply_templates = {
+            "professional": f"Thank you for your email regarding '{subject}'. I appreciate you reaching out and will get back to you soon with a detailed response.",
+            "friendly": f"Hi! Thanks for your message about '{subject}'. I've received your email and will respond in detail shortly. Have a great day!",
+            "concise": f"Received your email about '{subject}'. Will respond soon."
+        }
+        
+        # Use custom message if provided, otherwise use template
+        reply_text = req.custom_message if req.custom_message else reply_templates.get(req.reply_type, reply_templates["professional"])
+        
+        # Create reply message
+        reply_message = {
+            'raw': base64.urlsafe_b64encode(
+                f'To: {sender}\r\n'
+                f'Subject: Re: {subject}\r\n'
+                f'Content-Type: text/plain; charset=utf-8\r\n'
+                f'\r\n'
+                f'{reply_text}'.encode('utf-8')
+            ).decode('utf-8')
+        }
+        
+        # Send the reply
+        sent_message = service.users().messages().send(
+            userId='me',
+            body=reply_message
+        ).execute()
+        
+        return {
+            "success": True,
+            "message": "Auto-reply sent successfully!",
+            "reply_text": reply_text,
+            "sent_message_id": sent_message['id']
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send auto-reply: {str(e)}")
+
+
+
+@app.post("/emails/analyze/advanced")
+def analyze_emails_advanced(access_token: str = None, max_results: int = 10):
+    """Advanced email analysis with comprehensive insights using the new EmailProcessor."""
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Access token required")
+    
+    try:
+        # Fetch emails
         credentials = Credentials(access_token)
         service = build('gmail', 'v1', credentials=credentials)
         results = service.users().messages().list(
             userId='me',
-            maxResults=10,
+            maxResults=max_results,
             labelIds=['INBOX', 'CATEGORY_PERSONAL', 'IMPORTANT'],
             q="is:important"
         ).execute()
+        
         messages = results.get('messages', [])
-        email_texts = []
+        emails_data = []
+        
+        # Extract email data
         for message in messages:
             msg = service.users().messages().get(
                 userId='me',
@@ -259,97 +375,132 @@ def summarize_recent_emails(access_token: str = None):
                 format='metadata',
                 metadataHeaders=['Subject', 'From', 'Date']
             ).execute()
+            
             headers = msg['payload']['headers']
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
             date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown')
             snippet = msg.get('snippet', '')
-            email_text = f"Subject: {subject}\nFrom: {sender}\nDate: {date}\n{snippet}"
-            email_texts.append(email_text)
-        # Use the same chunked summarization logic
-        def summarize_text(text):
-            api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-            headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-            payload = {"inputs": text}
-            response = requests.post(api_url, headers=headers, json=payload)
-            response.raise_for_status()
-            result = response.json()
-            if isinstance(result, dict) and result.get("error"):
-                return f"Hugging Face error: {result['error']}"
-            return result[0]["summary_text"] if isinstance(result, list) and "summary_text" in result[0] else str(result)
-        chunk_size = 2
-        chunks = [email_texts[i:i+chunk_size] for i in range(0, len(email_texts), chunk_size)]
-        chunk_summaries = []
-        for chunk in chunks:
-            chunk_text = "\n\n".join(chunk)
-            summary = summarize_text(chunk_text)
-            chunk_summaries.append(summary)
-        print (chunk_summaries)
-        final_summary = "\n".join(chunk_summaries)
-        if len(chunk_summaries) > 1:
-            final_summary = summarize_text(final_summary)
-        return {"summary": final_summary}
+            
+            emails_data.append({
+                'id': message['id'],
+                'subject': subject,
+                'from': sender,
+                'date': date,
+                'snippet': snippet
+            })
+        
+        # Use advanced email processor for analysis
+        analyzed_emails = email_processor.batch_analyze_emails(emails_data)
+        
+        # Generate summary statistics
+        categories = [email['analysis']['category'] for email in analyzed_emails]
+        priorities = [email['analysis']['priority'] for email in analyzed_emails]
+        sentiments = [email['analysis']['sentiment'] for email in analyzed_emails]
+        action_required = [email for email in analyzed_emails if email['analysis']['action_required']]
+        
+        summary_stats = {
+            "total_emails": len(analyzed_emails),
+            "categories": {cat: categories.count(cat) for cat in set(categories)},
+            "priorities": {pri: priorities.count(pri) for pri in set(priorities)},
+            "sentiments": {sent: sentiments.count(sent) for sent in set(sentiments)},
+            "action_required_count": len(action_required),
+            "urgent_emails": [email for email in analyzed_emails if email['analysis']['priority'] == 'urgent'],
+            "high_priority_emails": [email for email in analyzed_emails if email['analysis']['priority'] in ['urgent', 'high']]
+        }
+        
+        return {
+            "emails": analyzed_emails,
+            "summary_statistics": summary_stats,
+            "message": f"Successfully analyzed {len(analyzed_emails)} emails with advanced AI insights"
+        }
+        
     except Exception as e:
-        return {"summary": f"Unable to summarize recent emails: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Advanced analysis failed: {str(e)}")
 
-@app.post("/emails/classify/recent")
-def classify_recent_emails(access_token: str = None):
-    """Fetch and classify the 5 most recent, important emails from the Primary tab (with timeout and progress logging)."""
+@app.post("/emails/summarize/smart")
+def smart_summarize_emails(access_token: str = None, category_filter: str = None):
+    """Smart summarization with category-specific insights and action items."""
     if not access_token:
         raise HTTPException(status_code=400, detail="Access token required")
+    
     try:
-        # Fetch emails (reuse logic from fetch_emails)
+        # Fetch emails
         credentials = Credentials(access_token)
         service = build('gmail', 'v1', credentials=credentials)
         results = service.users().messages().list(
             userId='me',
-            maxResults=5,  # Limit to 5 for testing
+            maxResults=15,
             labelIds=['INBOX', 'CATEGORY_PERSONAL', 'IMPORTANT'],
             q="is:important"
         ).execute()
+        
         messages = results.get('messages', [])
-        email_results = []
-        for idx, message in enumerate(messages):
+        emails_data = []
+        
+        # Extract email data
+        for message in messages:
             msg = service.users().messages().get(
                 userId='me',
                 id=message['id'],
                 format='metadata',
                 metadataHeaders=['Subject', 'From', 'Date']
             ).execute()
+            
             headers = msg['payload']['headers']
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
             date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown')
             snippet = msg.get('snippet', '')
-            email_text = f"Subject: {subject}\nFrom: {sender}\nDate: {date}\n{snippet}"
-            # Classify using Hugging Face zero-shot classifier
-            api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
-            headers_hf = {"Authorization": f"Bearer {HF_API_KEY}"}
-            candidate_labels = ["work", "personal", "spam", "finance", "other"]
-            payload = {
-                "inputs": email_text,
-                "parameters": {"candidate_labels": candidate_labels}
-            }
-            try:
-                print(f"Classifying email {idx+1}/{len(messages)}: {subject}")
-                response = requests.post(api_url, headers=headers_hf, json=payload, timeout=15)
-                response.raise_for_status()
-                result = response.json()
-                if isinstance(result, dict) and result.get("error"):
-                    category = f"Hugging Face error: {result['error']}"
-                else:
-                    category = result["labels"][0] if "labels" in result and result["labels"] else "other"
-            except Exception as e:
-                print(f"Error classifying email {idx+1}: {e}")
-                category = f"Unable to classify: {str(e)}"
-            email_results.append({
+            
+            emails_data.append({
                 'id': message['id'],
                 'subject': subject,
                 'from': sender,
                 'date': date,
-                'snippet': snippet,
-                'category': category
+                'snippet': snippet
             })
-        return {"emails": email_results, "count": len(email_results)}
+        
+        # Analyze emails
+        analyzed_emails = email_processor.batch_analyze_emails(emails_data)
+        
+        # Filter by category if specified
+        if category_filter:
+            analyzed_emails = [email for email in analyzed_emails if email['analysis']['category'] == category_filter]
+        
+        # Group by category for better organization
+        categorized_summaries = {}
+        for email in analyzed_emails:
+            category = email['analysis']['category']
+            if category not in categorized_summaries:
+                categorized_summaries[category] = []
+            categorized_summaries[category].append({
+                'subject': email['subject'],
+                'from': email['from'],
+                'priority': email['analysis']['priority'],
+                'summary': email['analysis']['summary'],
+                'action_required': email['analysis']['action_required']
+            })
+        
+        # Generate category-specific insights
+        insights = {}
+        for category, emails in categorized_summaries.items():
+            high_priority = [e for e in emails if e['priority'] in ['urgent', 'high']]
+            action_items = [e for e in emails if e['action_required']]
+            
+            insights[category] = {
+                'total_emails': len(emails),
+                'high_priority_count': len(high_priority),
+                'action_items_count': len(action_items),
+                'emails': emails
+            }
+        
+        return {
+            "categorized_summaries": categorized_summaries,
+            "insights": insights,
+            "total_emails_analyzed": len(analyzed_emails),
+            "message": "Smart summarization completed with category-specific insights"
+        }
+        
     except Exception as e:
-        return {"emails": [], "error": f"Unable to classify recent emails: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Smart summarization failed: {str(e)}")

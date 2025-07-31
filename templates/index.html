@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Email Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .loading {
+            display: none !important;
+        }
+        .loading.show {
+            display: flex !important;
+        }
+        .email-card {
+            border-left: 4px solid #3b82f6;
+        }
+        .email-card.urgent {
+            border-left-color: #ef4444;
+        }
+        .email-card.high {
+            border-left-color: #f59e0b;
+        }
+        .email-card.medium {
+            border-left-color: #10b981;
+        }
+        .email-card.low {
+            border-left-color: #6b7280;
+        }
+        
+        /* Custom scrollbar for email list */
+        #email-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #email-list::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        
+        #email-list::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        
+        #email-list::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Ensure proper spacing for email cards */
+        .email-card {
+            min-height: auto;
+        }
+        
+        /* Fix email text visibility */
+        .email-card .bg-white {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: normal;
+        }
+        
+        .email-card .text-sm {
+            line-height: 1.5;
+            max-height: none;
+            overflow: visible;
+        }
+        
+        /* Ensure email snippets are fully visible */
+        .email-card p {
+            white-space: normal;
+            word-break: break-word;
+            overflow: visible;
+            text-overflow: unset;
+        }
+        
+        /* Auto-reply modal scrolling fixes */
+        .auto-reply-modal {
+            max-height: 90vh !important;
+            overflow: hidden !important;
+        }
+        
+        .auto-reply-modal .modal-content {
+            max-height: 90vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        
+        .auto-reply-modal .modal-scroll-area {
+            flex: 1 !important;
+            overflow-y: auto !important;
+            min-height: 0 !important;
+        }
+        
+        /* Custom scrollbar for modal */
+        .auto-reply-modal .modal-scroll-area::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .auto-reply-modal .modal-scroll-area::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        
+        .auto-reply-modal .modal-scroll-area::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        
+        .auto-reply-modal .modal-scroll-area::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Loading popup positioning fixes */
+        #loading {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            align-items: center !important;
+            justify-content: center !important;
+            z-index: 9999 !important;
+        }
+        
+        #loading.show {
+            display: flex !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-xl">
+        <div class="container mx-auto px-6 py-12">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <div class="bg-white bg-opacity-20 rounded-full p-4 mr-6">
+                        <i class="fas fa-envelope text-3xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-4xl font-bold mb-2">Smart Email Assistant</h1>
+                        <p class="text-xl opacity-90">AI-Powered Email Management & Analysis</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm opacity-75 mb-1">Connection Status</div>
+                    <div id="status" class="text-xl font-semibold flex items-center justify-end">
+                        <div class="w-3 h-3 bg-red-400 rounded-full mr-2"></div>
+                        Disconnected
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8">
+        <!-- Authentication Section -->
+        <div id="auth-section" class="bg-white rounded-xl shadow-lg p-8 mb-8">
+            <div class="text-center">
+                <div class="bg-blue-100 rounded-full p-4 w-16 h-16 mx-auto mb-6">
+                    <i class="fas fa-key text-2xl text-blue-600"></i>
+                </div>
+                <h2 class="text-3xl font-bold mb-4 text-gray-800">
+                    Step 1: Connect Your Gmail
+                </h2>
+                <p class="text-gray-600 text-lg mb-6 max-w-2xl mx-auto">
+                    First, let's connect to your Gmail account to analyze your emails securely using OAuth2 authentication.
+                </p>
+                
+                <!-- Google API Disclaimer -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto mb-6">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-blue-800">Important Notice</h3>
+                            <div class="mt-2 text-sm text-blue-700">
+                                <p>This is a portfolio project and uses a Google API. When you log in with your Gmail account, you will see a warning from Google about an 'unverified app.' This is normal for development projects and is due to not having gone through Google's full verification process, which is designed for commercial-scale applications. The app is safe to use and only requests read-only access to your emails.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="connect-gmail" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg border-0">
+                    <i class="fab fa-google mr-3"></i>
+                    Connect Gmail Account
+                </button>
+                <div id="auth-status" class="mt-6 text-sm text-gray-500"></div>
+            </div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div id="analysis-section" class="bg-white rounded-xl shadow-lg p-8 mb-8" style="display: none;">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold mb-3 text-gray-800">
+                    <i class="fas fa-brain mr-3 text-blue-600"></i>
+                    AI-Powered Email Analysis
+                </h2>
+                <p class="text-gray-600 text-lg">
+                    Choose your preferred analysis method to get intelligent insights about your emails
+                </p>
+            </div>
+            
+            <!-- Main Features Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <!-- Advanced Analysis -->
+                <div class="group cursor-pointer">
+                    <button id="analyze-emails" class="w-full bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-6 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl border-0">
+                        <div class="flex items-center justify-center mb-3">
+                            <i class="fas fa-magic text-2xl mr-3"></i>
+                            <span class="text-xl">Advanced Analysis</span>
+                        </div>
+                        <p class="text-sm opacity-90">Comprehensive AI analysis with categories, priorities, and smart insights</p>
+                    </button>
+                </div>
+                
+                <!-- Fetch Emails -->
+                <div class="group cursor-pointer">
+                    <button id="fetch-emails" class="w-full bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-6 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl border-0">
+                        <div class="flex items-center justify-center mb-3">
+                            <i class="fas fa-inbox text-2xl mr-3"></i>
+                            <span class="text-xl">Fetch Emails</span>
+                        </div>
+                        <p class="text-sm opacity-90">Get your recent emails with basic metadata and organization</p>
+                    </button>
+                </div>
+                
+                <!-- Smart Summarize -->
+                <div class="group cursor-pointer">
+                    <button id="smart-summarize" class="w-full bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold py-6 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl border-0">
+                        <div class="flex items-center justify-center mb-3">
+                            <i class="fas fa-file-alt text-2xl mr-3"></i>
+                            <span class="text-xl">Smart Summarize</span>
+                        </div>
+                        <p class="text-sm opacity-90">Category-specific summaries with actionable insights</p>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Individual Tools Section -->
+            <div class="bg-gray-50 rounded-xl p-6">
+                <h3 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                    <i class="fas fa-tools mr-2 text-gray-600"></i>
+                    Individual Email Tools
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button id="classify-email" class="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-medium py-4 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg border-0">
+                        <i class="fas fa-tags mr-2"></i>
+                        Classify Email
+                    </button>
+                    
+                    <button id="summarize-thread" class="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white font-medium py-4 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg border-0">
+                        <i class="fas fa-comments mr-2"></i>
+                        Summarize Thread
+                    </button>
+                    
+                    <button id="auto-reply" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium py-4 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg border-0">
+                        <i class="fas fa-reply mr-2"></i>
+                        Auto Reply
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="space-y-8" style="display: none;">
+            <!-- Summary Stats -->
+            <div id="summary-stats" class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <!-- Stats will be populated here -->
+            </div>
+
+            <!-- Email Categories -->
+            <div class="bg-white rounded-xl shadow-lg p-8">
+                <h3 class="text-2xl font-bold mb-6 text-gray-800 flex items-center">
+                    <i class="fas fa-tags mr-3 text-blue-600"></i>
+                    Email Categories
+                </h3>
+                <div id="category-chart" class="h-64 bg-gray-50 rounded-lg p-4">
+                    <p class="text-gray-500 text-center mt-8">Category visualization will appear here</p>
+                </div>
+            </div>
+
+            <!-- Email List -->
+            <div class="bg-white rounded-xl shadow-lg p-8">
+                <h3 class="text-2xl font-bold mb-6 text-gray-800 flex items-center">
+                    <i class="fas fa-inbox mr-3 text-blue-600"></i>
+                    Email Analysis Results
+                </h3>
+                <div id="email-list" class="space-y-6 max-h-96 overflow-y-auto pr-2">
+                    <!-- Emails will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Spinner with Progress Bar -->
+        <div id="loading" class="loading fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[9999] backdrop-blur-sm" style="display:none">
+            <div class="bg-white rounded-2xl p-10 text-center shadow-2xl max-w-md mx-4 transform -translate-y-4">
+                <div class="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto mb-6"></div>
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">Processing...</h3>
+                <p class="text-gray-600 mb-4" id="loading-message">Analyzing your emails with AI...</p>
+                
+                <!-- Progress Bar -->
+                <div class="w-full bg-gray-200 rounded-full h-3 mb-4">
+                    <div id="progress-bar" class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-sm text-gray-500">
+                    <span id="progress-text">0%</span>
+                    <span id="progress-status">Initializing...</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8 mt-12">
+        <div class="container mx-auto px-6 text-center">
+            <p class="text-gray-400">
+                Smart Email Assistant - Powered by AI & Machine Learning
+            </p>
+            <div class="mt-4 space-x-4">
+                <span class="text-sm text-gray-500">
+                    <i class="fas fa-shield-alt mr-1"></i>
+                    Secure OAuth2 Authentication
+                </span>
+                <span class="text-sm text-gray-500">
+                    <i class="fas fa-brain mr-1"></i>
+                    Advanced AI Analysis
+                </span>
+                <span class="text-sm text-gray-500">
+                    <i class="fas fa-chart-bar mr-1"></i>
+                    Real-time Insights
+                </span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        let accessToken = null;
+
+        // Immediately hide loading popup (runs before DOM is ready)
+        if (document.getElementById('loading')) {
+            document.getElementById('loading').classList.remove('show');
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Always hide loading popup on page load (removes any stuck state)
+        document.addEventListener('DOMContentLoaded', function() {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.classList.remove('show');
+                loadingElement.style.display = 'none';
+            }
+        });
+
+        // Also hide on window load as a final failsafe
+        window.addEventListener('load', function() {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.classList.remove('show');
+                loadingElement.style.display = 'none';
+            }
+        });
+
+        // Connect Gmail
+        document.getElementById('connect-gmail').addEventListener('click', async () => {
+            try {
+                showLoading('Connecting to Gmail...');
+                updateStatus('Connecting...', 'text-yellow-600');
+                
+                // Direct redirect to OAuth URL
+                window.location.href = '/auth/gmail/initiate';
+            } catch (error) {
+                showError('Failed to connect to Gmail');
+                hideLoading();
+            }
+        });
+
+        // Advanced Analysis
+        document.getElementById('analyze-emails').addEventListener('click', async () => {
+            if (!accessToken) {
+                showError('Please connect your Gmail account first');
+                return;
+            }
+
+            try {
+                showLoading('Performing advanced AI analysis...');
+                updateStatus('Analyzing...', 'text-yellow-600');
+                
+                // Start progress simulation and get completion function
+                const completeProgress = startProgressSimulation();
+
+                const response = await fetch(`/emails/analyze/advanced?access_token=${accessToken}&max_results=10`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Complete the progress when actually done
+                    completeProgress();
+                    displayResults(data);
+                    updateStatus('Advanced Analysis Complete', 'text-green-600');
+                } else {
+                    completeProgress();
+                    showError(data.detail || 'Advanced analysis failed');
+                }
+            } catch (error) {
+                showError('Failed to perform advanced analysis');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Fetch Emails
+        document.getElementById('fetch-emails').addEventListener('click', async () => {
+            if (!accessToken) {
+                showError('Please connect your Gmail account first');
+                return;
+            }
+
+            try {
+                showLoading('Fetching your emails...');
+                updateStatus('Fetching...', 'text-yellow-600');
+                const completeProgress = startProgressSimulation();
+
+                const response = await fetch(`/emails?access_token=${accessToken}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    completeProgress();
+                    displayEmailList(data);
+                    updateStatus('Emails Fetched', 'text-green-600');
+                } else {
+                    completeProgress();
+                    showError(data.detail || 'Failed to fetch emails');
+                }
+            } catch (error) {
+                showError('Failed to fetch emails');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Smart Summarize
+        document.getElementById('smart-summarize').addEventListener('click', async () => {
+            if (!accessToken) {
+                showError('Please connect your Gmail account first');
+                return;
+            }
+
+            try {
+                showLoading('Generating smart summaries...');
+                updateStatus('Summarizing...', 'text-yellow-600');
+                const completeProgress = startProgressSimulation();
+
+                const response = await fetch(`/emails/summarize/smart?access_token=${accessToken}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+
+                if (response.ok) {
+                    completeProgress();
+                    displaySmartSummary(data);
+                    updateStatus('Smart Summary Complete', 'text-green-600');
+                } else {
+                    completeProgress();
+                    showError(data.detail || 'Smart summarization failed');
+                }
+            } catch (error) {
+                showError('Failed to generate smart summaries');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Classify Email
+        document.getElementById('classify-email').addEventListener('click', async () => {
+            const emailContent = prompt('Enter email content to classify:');
+            if (!emailContent) return;
+
+            try {
+                showLoading('Classifying email...');
+                updateStatus('Classifying...', 'text-yellow-600');
+
+                const response = await fetch('/emails/classify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: emailContent
+                    })
+                });
+                
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`Email Classification: ${data.classification || data.category}`);
+                    updateStatus('Classification Complete', 'text-green-600');
+                } else {
+                    showError(data.detail || 'Classification failed');
+                }
+            } catch (error) {
+                showError('Failed to classify email');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Summarize Thread
+        document.getElementById('summarize-thread').addEventListener('click', async () => {
+            const threadId = prompt('Enter thread ID:');
+            const messages = prompt('Enter email messages (comma-separated):');
+            if (!threadId || !messages) return;
+
+            try {
+                showLoading('Summarizing email thread...');
+                updateStatus('Summarizing...', 'text-yellow-600');
+
+                const response = await fetch('/emails/summarize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        thread_id: threadId,
+                        messages: messages.split(',').map(m => m.trim())
+                    })
+                });
+                
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`Thread Summary: ${data.summary}`);
+                    updateStatus('Thread Summary Complete', 'text-green-600');
+                } else {
+                    showError(data.detail || 'Thread summarization failed');
+                }
+            } catch (error) {
+                showError('Failed to summarize thread');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Auto Reply
+        document.getElementById('auto-reply').addEventListener('click', async () => {
+            if (!accessToken) {
+                showError('Please connect your Gmail account first');
+                return;
+            }
+
+            try {
+                // First, fetch recent emails to show user
+                showLoading('Fetching recent emails...');
+                const fetchResponse = await fetch(`/emails?access_token=${accessToken}&max_results=5`);
+                const emailsData = await fetchResponse.json();
+                
+                if (!fetchResponse.ok) {
+                    showError('Failed to fetch emails for auto-reply');
+                    return;
+                }
+
+                hideLoading();
+
+                // Create email selection modal with proper scrolling
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 auto-reply-modal';
+                modal.innerHTML = `
+                    <div class="bg-white rounded-2xl max-w-2xl w-full modal-content">
+                        <div class="p-6 border-b border-gray-200 flex-shrink-0">
+                            <h3 class="text-2xl font-bold text-gray-800">Send Auto-Reply</h3>
+                            <p class="text-gray-600 mt-2">Select an email to send an auto-reply to:</p>
+                        </div>
+                        
+                        <div class="modal-scroll-area p-6">
+                            <div class="space-y-3">
+                                ${emailsData.emails.map(email => `
+                                    <div class="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer email-option" data-email-id="${email.id}" data-subject="${email.subject}">
+                                        <div class="font-semibold text-gray-800">${email.subject}</div>
+                                        <div class="text-sm text-gray-600">From: ${email.from}</div>
+                                        <div class="text-sm text-gray-500">${email.snippet}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Reply Type:</label>
+                                <select id="reply-type" class="w-full p-3 border rounded-lg">
+                                    <option value="professional">Professional</option>
+                                    <option value="friendly">Friendly</option>
+                                    <option value="concise">Concise</option>
+                                    <option value="custom">Custom Message</option>
+                                </select>
+                            </div>
+
+                            <div id="custom-message-section" class="mb-4 hidden">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Custom Message:</label>
+                                <textarea id="custom-message" class="w-full p-3 border rounded-lg" rows="3" placeholder="Enter your custom reply message..."></textarea>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button id="send-reply" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50" disabled>
+                                    Send Auto-Reply
+                                </button>
+                                <button id="cancel-reply" class="bg-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-400">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                // Handle email selection
+                let selectedEmailId = null;
+                document.querySelectorAll('.email-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        document.querySelectorAll('.email-option').forEach(opt => opt.classList.remove('bg-blue-50', 'border-blue-500'));
+                        option.classList.add('bg-blue-50', 'border-blue-500');
+                        selectedEmailId = option.dataset.emailId;
+                        document.getElementById('send-reply').disabled = false;
+                    });
+                });
+
+                // Handle reply type change
+                document.getElementById('reply-type').addEventListener('change', (e) => {
+                    const customSection = document.getElementById('custom-message-section');
+                    if (e.target.value === 'custom') {
+                        customSection.classList.remove('hidden');
+                    } else {
+                        customSection.classList.add('hidden');
+                    }
+                });
+
+                // Handle send reply
+                document.getElementById('send-reply').addEventListener('click', async () => {
+                    if (!selectedEmailId) return;
+
+                    const replyType = document.getElementById('reply-type').value;
+                    const customMessage = document.getElementById('custom-message').value;
+
+                    try {
+                        showLoading('Sending auto-reply...');
+                        updateStatus('Sending...', 'text-yellow-600');
+
+                        const response = await fetch(`/emails/reply?access_token=${accessToken}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                email_id: selectedEmailId,
+                                reply_type: replyType,
+                                custom_message: customMessage
+                            })
+                        });
+                        
+                        const data = await response.json();
+
+                        if (response.ok && data.success) {
+                            alert(`✅ Auto-reply sent successfully!\n\nReply: ${data.reply_text}`);
+                            updateStatus('Auto-Reply Sent', 'text-green-600');
+                        } else {
+                            showError(data.detail || 'Failed to send auto-reply');
+                        }
+                    } catch (error) {
+                        showError('Failed to send auto-reply');
+                    } finally {
+                        hideLoading();
+                        document.body.removeChild(modal);
+                    }
+                });
+
+                // Handle cancel
+                document.getElementById('cancel-reply').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+
+            } catch (error) {
+                showError('Failed to load emails for auto-reply');
+                hideLoading();
+            }
+        });
+
+        // Function to create auto-reply button for individual emails
+        function createAutoReplyButton(emailId, subject) {
+            return `
+                <button class="auto-reply-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors duration-200" 
+                        data-email-id="${emailId}" 
+                        data-subject="${subject}">
+                    <i class="fas fa-reply mr-1"></i>
+                    Auto Reply
+                </button>
+            `;
+        }
+
+        // Add auto-reply functionality to individual email buttons
+        function addAutoReplyListeners() {
+            document.querySelectorAll('.auto-reply-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (!accessToken) {
+                        showError('Please connect your Gmail account first');
+                        return;
+                    }
+
+                    const emailId = btn.dataset.emailId;
+                    const subject = btn.dataset.subject;
+
+                    // Create quick reply modal
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4';
+                    modal.innerHTML = `
+                        <div class="bg-white rounded-2xl max-w-md w-full">
+                            <div class="p-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Send Auto-Reply</h3>
+                                <p class="text-sm text-gray-600 mb-4">Reply to: <strong>${subject}</strong></p>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Reply Type:</label>
+                                    <select id="quick-reply-type" class="w-full p-3 border rounded-lg">
+                                        <option value="professional">Professional</option>
+                                        <option value="friendly">Friendly</option>
+                                        <option value="concise">Concise</option>
+                                        <option value="custom">Custom Message</option>
+                                    </select>
+                                </div>
+
+                                <div id="quick-custom-message-section" class="mb-4 hidden">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Custom Message:</label>
+                                    <textarea id="quick-custom-message" class="w-full p-3 border rounded-lg" rows="3" placeholder="Enter your custom reply message..."></textarea>
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <button id="quick-send-reply" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                                        Send Reply
+                                    </button>
+                                    <button id="quick-cancel-reply" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    document.body.appendChild(modal);
+
+                    // Handle reply type change
+                    document.getElementById('quick-reply-type').addEventListener('change', (e) => {
+                        const customSection = document.getElementById('quick-custom-message-section');
+                        if (e.target.value === 'custom') {
+                            customSection.classList.remove('hidden');
+                        } else {
+                            customSection.classList.add('hidden');
+                        }
+                    });
+
+                    // Handle send reply
+                    document.getElementById('quick-send-reply').addEventListener('click', async () => {
+                        const replyType = document.getElementById('quick-reply-type').value;
+                        const customMessage = document.getElementById('quick-custom-message').value;
+
+                        try {
+                            showLoading('Sending auto-reply...');
+                            updateStatus('Sending...', 'text-yellow-600');
+
+                            const response = await fetch(`/emails/reply?access_token=${accessToken}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    email_id: emailId,
+                                    reply_type: replyType,
+                                    custom_message: customMessage
+                                })
+                            });
+                            
+                            const data = await response.json();
+
+                            if (response.ok && data.success) {
+                                alert(`✅ Auto-reply sent successfully!\n\nReply: ${data.reply_text}`);
+                                updateStatus('Auto-Reply Sent', 'text-green-600');
+                            } else {
+                                showError(data.detail || 'Failed to send auto-reply');
+                            }
+                        } catch (error) {
+                            showError('Failed to send auto-reply');
+                        } finally {
+                            hideLoading();
+                            document.body.removeChild(modal);
+                        }
+                    });
+
+                    // Handle cancel
+                    document.getElementById('quick-cancel-reply').addEventListener('click', () => {
+                        document.body.removeChild(modal);
+                    });
+                });
+            });
+        }
+
+        // Display Results
+        function displayResults(data) {
+            const resultsSection = document.getElementById('results-section');
+            const summaryStats = document.getElementById('summary-stats');
+            const emailList = document.getElementById('email-list');
+            const categoryChart = document.getElementById('category-chart');
+
+            // Show results section
+            resultsSection.style.display = 'block';
+
+            // Display summary statistics
+            if (data.summary_statistics) {
+                const stats = data.summary_statistics;
+                summaryStats.innerHTML = `
+                    <div class="bg-blue-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-blue-600">${stats.total_emails}</div>
+                        <div class="text-sm text-blue-800">Total Emails</div>
+                    </div>
+                    <div class="bg-green-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-green-600">${stats.action_required_count}</div>
+                        <div class="text-sm text-green-800">Action Required</div>
+                    </div>
+                    <div class="bg-yellow-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-yellow-600">${stats.urgent_emails.length}</div>
+                        <div class="text-sm text-yellow-800">Urgent Emails</div>
+                    </div>
+                    <div class="bg-purple-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-purple-600">${Object.keys(stats.categories).length}</div>
+                        <div class="text-sm text-purple-800">Categories</div>
+                    </div>
+                `;
+                
+                // Display category chart
+                if (stats.categories && Object.keys(stats.categories).length > 0) {
+                    const categoryColors = {
+                        'work': 'bg-blue-500',
+                        'personal': 'bg-green-500',
+                        'finance': 'bg-yellow-500',
+                        'shopping': 'bg-purple-500',
+                        'travel': 'bg-indigo-500',
+                        'health': 'bg-red-500',
+                        'education': 'bg-teal-500',
+                        'social': 'bg-pink-500',
+                        'spam': 'bg-gray-500',
+                        'other': 'bg-gray-400'
+                    };
+                    
+                    let chartHTML = '<div class="space-y-3">';
+                    const totalEmails = stats.total_emails;
+                    
+                    Object.entries(stats.categories).forEach(([category, count]) => {
+                        const percentage = totalEmails > 0 ? Math.round((count / totalEmails) * 100) : 0;
+                        const color = categoryColors[category] || 'bg-gray-400';
+                        
+                        chartHTML += `
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <div class="w-4 h-4 ${color} rounded-full mr-3"></div>
+                                    <span class="text-sm font-medium text-gray-700 capitalize">${category}</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                                        <div class="${color} h-2 rounded-full" style="width: ${percentage}%"></div>
+                                    </div>
+                                    <span class="text-sm text-gray-600">${count} (${percentage}%)</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    chartHTML += '</div>';
+                    categoryChart.innerHTML = chartHTML;
+                } else {
+                    categoryChart.innerHTML = '<p class="text-gray-500 text-center mt-8">No category data available</p>';
+                }
+            }
+
+            // Display emails
+            if (data.emails && data.emails.length > 0) {
+                emailList.innerHTML = data.emails.map(email => {
+                    const analysis = email.analysis || {};
+                    const priorityClass = analysis.priority || 'medium';
+                    const category = analysis.category || 'other';
+                    const sentiment = analysis.sentiment || 'neutral';
+                    
+                    return `
+                        <div class="email-card ${priorityClass} bg-gray-50 rounded-xl p-6 mb-6 border-l-4 border-${getPriorityColor(priorityClass)}-500">
+                            <div class="flex justify-between items-start mb-4">
+                                <h4 class="font-bold text-gray-800 text-lg flex-1 mr-4">${email.subject}</h4>
+                                <div class="flex flex-wrap gap-2">
+                                    <span class="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-800 font-medium">${category}</span>
+                                    <span class="px-3 py-1 text-xs rounded-full bg-${getPriorityColor(priorityClass)}-100 text-${getPriorityColor(priorityClass)}-800 font-medium">${priorityClass}</span>
+                                    <span class="px-3 py-1 text-xs rounded-full bg-${getSentimentColor(sentiment)}-100 text-${getSentimentColor(sentiment)}-800 font-medium">${sentiment}</span>
+                                    ${createAutoReplyButton(email.id, email.subject)}
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1"><strong>From:</strong> ${email.from}</p>
+                                    <p class="text-sm text-gray-600"><strong>Date:</strong> ${email.date || 'Unknown'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600"><strong>ID:</strong> ${email.id}</p>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-lg p-4 mb-4">
+                                <p class="text-sm text-gray-700 leading-relaxed whitespace-normal break-words">${email.snippet || 'No preview available'}</p>
+                            </div>
+                            ${analysis.summary ? `
+                                <div class="bg-blue-50 rounded-lg p-4 mb-4 border-l-4 border-blue-500">
+                                    <h5 class="font-semibold text-blue-800 mb-2 flex items-center">
+                                        <i class="fas fa-lightbulb mr-2"></i>
+                                        AI Summary
+                                    </h5>
+                                    <p class="text-sm text-blue-700 leading-relaxed">${analysis.summary}</p>
+                                </div>
+                            ` : ''}
+                            ${analysis.action_required ? `
+                                <div class="bg-red-50 rounded-lg p-4 border-l-4 border-red-500">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                                        <span class="text-sm font-medium text-red-800">Action Required</span>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+                
+                // Add auto-reply listeners
+                addAutoReplyListeners();
+            }
+        }
+
+        // Display Email List (for fetch emails)
+        function displayEmailList(data) {
+            const resultsSection = document.getElementById('results-section');
+            const summaryStats = document.getElementById('summary-stats');
+            const emailList = document.getElementById('email-list');
+            const categoryChart = document.getElementById('category-chart');
+
+            // Show results section
+            resultsSection.style.display = 'block';
+
+            // Generate basic statistics
+            if (data.emails && data.emails.length > 0) {
+                const totalEmails = data.emails.length;
+                
+                // Display basic summary statistics
+                summaryStats.innerHTML = `
+                    <div class="bg-blue-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-blue-600">${totalEmails}</div>
+                        <div class="text-sm text-blue-800">Total Emails</div>
+                    </div>
+                    <div class="bg-green-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-green-600">-</div>
+                        <div class="text-sm text-green-800">Action Required</div>
+                    </div>
+                    <div class="bg-yellow-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-yellow-600">-</div>
+                        <div class="text-sm text-yellow-800">Urgent Emails</div>
+                    </div>
+                    <div class="bg-purple-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-purple-600">-</div>
+                        <div class="text-sm text-purple-800">Categories</div>
+                    </div>
+                `;
+
+                // Display category chart placeholder
+                categoryChart.innerHTML = `
+                    <div class="text-center py-8">
+                        <i class="fas fa-chart-pie text-4xl text-gray-400 mb-4"></i>
+                        <p class="text-gray-500">Use "Advanced Analysis" for detailed category breakdown</p>
+                    </div>
+                `;
+
+                // Display emails
+                emailList.innerHTML = data.emails.map(email => {
+                    return `
+                        <div class="email-card bg-gray-50 rounded-xl p-6 mb-6 border-l-4 border-blue-500">
+                            <div class="flex justify-between items-start mb-4">
+                                <h4 class="font-bold text-gray-800 text-lg flex-1">${email.subject}</h4>
+                                <div class="flex gap-2">
+                                    <span class="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-800 font-medium">Raw Email</span>
+                                    ${createAutoReplyButton(email.id, email.subject)}
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1"><strong>From:</strong> ${email.from}</p>
+                                    <p class="text-sm text-gray-600"><strong>Date:</strong> ${email.date || 'Unknown'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600"><strong>ID:</strong> ${email.id}</p>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-lg p-4">
+                                <h5 class="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <i class="fas fa-envelope mr-2"></i>
+                                    Email Preview
+                                </h5>
+                                <p class="text-sm text-gray-700 leading-relaxed whitespace-normal break-words">${email.snippet || 'No preview available'}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                // Add auto-reply listeners
+                addAutoReplyListeners();
+            }
+        }
+
+        // Display Smart Summary
+        function displaySmartSummary(data) {
+            const resultsSection = document.getElementById('results-section');
+            const summaryStats = document.getElementById('summary-stats');
+            const emailList = document.getElementById('email-list');
+            const categoryChart = document.getElementById('category-chart');
+
+            // Show results section
+            resultsSection.style.display = 'block';
+
+            // Display categorized summaries
+            if (data.categorized_summaries) {
+                const categories = Object.keys(data.categorized_summaries);
+                const totalEmails = Object.values(data.categorized_summaries).reduce((sum, emails) => sum + emails.length, 0);
+                const actionRequiredCount = Object.values(data.categorized_summaries).flat().filter(email => email.action_required).length;
+                const urgentCount = Object.values(data.categorized_summaries).flat().filter(email => email.priority === 'urgent').length;
+
+                // Display summary statistics
+                summaryStats.innerHTML = `
+                    <div class="bg-blue-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-blue-600">${totalEmails}</div>
+                        <div class="text-sm text-blue-800">Total Emails</div>
+                    </div>
+                    <div class="bg-green-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-green-600">${actionRequiredCount}</div>
+                        <div class="text-sm text-green-800">Action Required</div>
+                    </div>
+                    <div class="bg-yellow-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-yellow-600">${urgentCount}</div>
+                        <div class="text-sm text-yellow-800">Urgent Emails</div>
+                    </div>
+                    <div class="bg-purple-100 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-purple-600">${categories.length}</div>
+                        <div class="text-sm text-purple-800">Categories</div>
+                    </div>
+                `;
+
+                // Display category chart
+                const categoryColors = {
+                    'work': 'bg-blue-500',
+                    'personal': 'bg-green-500',
+                    'finance': 'bg-yellow-500',
+                    'shopping': 'bg-purple-500',
+                    'travel': 'bg-indigo-500',
+                    'health': 'bg-red-500',
+                    'education': 'bg-teal-500',
+                    'social': 'bg-pink-500',
+                    'spam': 'bg-gray-500',
+                    'other': 'bg-gray-400'
+                };
+                
+                let chartHTML = '<div class="space-y-3">';
+                
+                categories.forEach(category => {
+                    const count = data.categorized_summaries[category].length;
+                    const percentage = totalEmails > 0 ? Math.round((count / totalEmails) * 100) : 0;
+                    const color = categoryColors[category] || 'bg-gray-400';
+                    
+                    chartHTML += `
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="w-4 h-4 ${color} rounded-full mr-3"></div>
+                                <span class="text-sm font-medium text-gray-700 capitalize">${category}</span>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                                    <div class="${color} h-2 rounded-full" style="width: ${percentage}%"></div>
+                                </div>
+                                <span class="text-sm text-gray-600">${count} (${percentage}%)</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                chartHTML += '</div>';
+                categoryChart.innerHTML = chartHTML;
+
+                let html = '';
+                
+                for (const [category, emails] of Object.entries(data.categorized_summaries)) {
+                    html += `
+                        <div class="email-card bg-purple-50 rounded-xl p-6 mb-6 border-l-4 border-purple-500">
+                            <h3 class="text-xl font-bold text-purple-800 mb-4 flex items-center">
+                                <i class="fas fa-tag mr-2"></i>
+                                ${category.charAt(0).toUpperCase() + category.slice(1)} Emails (${emails.length})
+                            </h3>
+                    `;
+                    
+                    emails.forEach(email => {
+                        const priorityClass = email.priority || 'medium';
+                        html += `
+                            <div class="bg-white rounded-lg p-4 mb-3 border-l-4 border-${getPriorityColor(priorityClass)}-500">
+                                <div class="flex justify-between items-start mb-2">
+                                    <h4 class="font-semibold text-gray-800">${email.subject}</h4>
+                                    <div class="flex gap-2">
+                                        <span class="px-2 py-1 text-xs rounded-full bg-${getPriorityColor(priorityClass)}-100 text-${getPriorityColor(priorityClass)}-800 font-medium">
+                                            ${priorityClass}
+                                        </span>
+                                        ${email.action_required ? '<span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800 font-medium">Action Required</span>' : ''}
+                                        ${createAutoReplyButton(email.id, email.subject)}
+                                    </div>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-2"><strong>From:</strong> ${email.from}</p>
+                                <div class="bg-purple-50 rounded p-3">
+                                    <p class="text-sm text-purple-700 leading-relaxed whitespace-normal break-words">${email.summary}</p>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
+                }
+                
+                emailList.innerHTML = html;
+                
+                // Add auto-reply listeners
+                addAutoReplyListeners();
+            } else if (data.message) {
+                emailList.innerHTML = `
+                    <div class="email-card bg-purple-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-purple-800 mb-2">Smart Summary</h4>
+                        <p class="text-sm text-purple-700">${data.message}</p>
+                    </div>
+                `;
+            } else {
+                emailList.innerHTML = `
+                    <div class="email-card bg-purple-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-purple-800 mb-2">Smart Summary</h4>
+                        <p class="text-sm text-purple-700">No emails found for smart summarization.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Helper functions
+        function getPriorityColor(priority) {
+            const colors = { urgent: 'red', high: 'red', medium: 'green', low: 'gray' };
+            return colors[priority] || 'gray';
+        }
+
+        function getSentimentColor(sentiment) {
+            const colors = { positive: 'green', negative: 'red', neutral: 'gray' };
+            return colors[sentiment] || 'gray';
+        }
+
+        function showLoading(message = 'Loading...') {
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('loading-message').textContent = message;
+            resetProgress();
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+            resetProgress();
+        }
+
+        function resetProgress() {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const progressStatus = document.getElementById('progress-status');
+            
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+            progressStatus.textContent = 'Initializing...';
+        }
+
+        function updateProgress(percentage, status) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const progressStatus = document.getElementById('progress-status');
+            
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${percentage}%`;
+            progressStatus.textContent = status;
+        }
+
+        function startProgressSimulation() {
+            let progress = 0;
+            const stages = [
+                { target: 10, status: 'Connecting to Gmail...' },
+                { target: 20, status: 'Fetching emails...' },
+                { target: 35, status: 'Analyzing with AI...' },
+                { target: 50, status: 'Processing results...' },
+                { target: 70, status: 'Finalizing analysis...' },
+                { target: 85, status: 'Almost complete...' }
+            ];
+            
+            let stageIndex = 0;
+            let isComplete = false;
+            
+            const interval = setInterval(() => {
+                if (isComplete) {
+                    clearInterval(interval);
+                    return;
+                }
+                
+                if (stageIndex >= stages.length) {
+                    // Stay at 85% until actual completion
+                    updateProgress(85, 'Processing...');
+                    return;
+                }
+                
+                const stage = stages[stageIndex];
+                if (progress >= stage.target) {
+                    stageIndex++;
+                    if (stageIndex < stages.length) {
+                        updateProgress(stage.target, stage.status);
+                    } else {
+                        updateProgress(85, 'Processing...');
+                    }
+                } else {
+                    progress += Math.random() * 2 + 0.5;
+                    updateProgress(Math.min(progress, stage.target), stage.status);
+                }
+            }, 300);
+            
+            // Return function to complete the progress
+            return () => {
+                isComplete = true;
+                updateProgress(100, 'Complete!');
+                clearInterval(interval);
+            };
+        }
+
+        function updateStatus(message, className = '') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `text-lg font-semibold ${className}`;
+        }
+
+        function showError(message) {
+            updateStatus('Error', 'text-red-600');
+            alert(message);
+        }
+
+        // Check for access token in URL (after OAuth callback)
+        function checkForAccessToken() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('access_token');
+            const error = urlParams.get('error');
+            
+            if (error) {
+                showError(`OAuth Error: ${error}`);
+                return;
+            }
+            
+            if (token) {
+                accessToken = token;
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('analysis-section').style.display = 'block';
+                updateStatus('Connected', 'text-green-600');
+                
+                // Clean up URL
+                const cleanUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
+            }
+        }
+
+        // Initialize
+        checkForAccessToken();
+    </script>
+</body>
+</html> 
