@@ -151,8 +151,6 @@ For enhanced AI features, get API keys from:
 | `/emails/summarize` | POST | Summarize email thread |
 | `/emails/reply` | POST | Generate auto-reply |
 
-## 🎯 Portfolio Highlights
-
 ### Technical Achievements
 - **Full-Stack Development**: Complete web application with modern architecture
 - **AI/ML Integration**: Advanced email analysis using multiple AI models
@@ -202,30 +200,8 @@ python test_oauth_flow.py
 - **Scalable Architecture**: Handles multiple concurrent users
 - **Resource Optimized**: Minimal memory and CPU usage
 
-## 🌟 Why This Project?
 
-This Smart Email Assistant demonstrates:
 
-1. **Full-Stack Expertise**: Complete web application development
-2. **AI/ML Skills**: Integration of multiple AI services
-3. **Security Knowledge**: OAuth2 and secure authentication
-4. **Cloud Deployment**: Production-ready deployment
-5. **Modern Technologies**: Latest frameworks and tools
-6. **User-Centric Design**: Beautiful, intuitive interface
-7. **Real-World Application**: Solves actual user problems
 
-## 📞 Support
 
-For questions or issues:
-1. Check the [Deployment Guide](DEPLOYMENT_GUIDE.md)
-2. Review the [Setup Guide](SETUP_GUIDE.md)
-3. Test with the provided test scripts
-4. Check application logs for detailed error messages
 
-## 📄 License
-
-This project is for portfolio purposes. Feel free to use and modify for your own projects.
-
----
-
-**Built with ❤️ for showcasing modern web development and AI integration skills**
